@@ -69,7 +69,7 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
         _lock.EnterReadLock();
         try
         {
-            return [.. GetHabitDict().Values];
+            return GetHabitDict().Values.ToList();
         }
         finally
         {
@@ -123,11 +123,8 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
             SaveToFile(_habitsFilePath, habitDict);
 
             var logDict = GetHabitLogDict();
-            foreach (HabitLog log in logDict.Values)
-            {
-                if (log.HabitId == id)
-                    logDict[log.Id].IsDeletedHabit = true;
-            }
+            foreach (var log in logDict.Values.Where(log => log.HabitId == id))
+                log.IsDeletedHabit = true;
             SaveToFile(_logsFilePath, logDict);
 
             return true;
@@ -143,7 +140,7 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
         _lock.EnterReadLock();
         try
         {
-            return [.. LoadFromFile<HabitLog>(_logsFilePath).Values];
+            return GetHabitLogDict().Values.ToList();
         }
         finally
         {
