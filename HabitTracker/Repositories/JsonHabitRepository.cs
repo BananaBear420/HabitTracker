@@ -151,17 +151,47 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
         }
     }
 
+    public List<HabitLog> GetHabitLogsByHabitId(Guid habitId)
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return GetHabitLogDict().Values
+                .Where(log => log.HabitId == habitId)
+                .ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    public HabitLog? GetHabitLog(Guid habitId, DateTime date)
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return GetHabitLogDict().Values
+                .FirstOrDefault(log => log.HabitId == habitId && log.Date.Date == date.Date);
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
     public void AddOrUpdateHabitLog(HabitLog log)
     {
         _lock.EnterWriteLock();
         try
         {
+            var logDict = GetHabitLogDict();
             var logHabitId = log.HabitId;
 
-            if (GetHabitDict().GetValueOrDefault(logHabitId) is null)
+            if (!logDict.ContainsKey(log.Id) && GetHabitDict().GetValueOrDefault(logHabitId) is null)
                 throw new InvalidOperationException($"Log is associated with HabitId ({logHabitId}) that does not exist");
 
-            var logDict = GetHabitLogDict();
+
             logDict[log.Id] = log;
 
             SaveToFile(_logsFilePath, logDict);
