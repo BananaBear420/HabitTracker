@@ -3,10 +3,11 @@ using HabitTracker.Models;
 
 namespace HabitTracker.Repositories;
 
-public class JsonHabitRepository : IHabitRepository
+public class JsonHabitRepository : IHabitRepository, IDisposable
 {
     private readonly string _habitsFilePath;
     private readonly string _logsFilePath;
+    private readonly ReaderWriterLockSlim _lock = new();
 
     public JsonHabitRepository(string habitsFilePath, string logsFilePath)
     {
@@ -39,78 +40,141 @@ public class JsonHabitRepository : IHabitRepository
     {
         return LoadFromFile<Habit>(_habitsFilePath);
     }
+
+    private Dictionary<Guid, HabitLog> GetHabitLogDict()
+    {
+        return LoadFromFile<HabitLog>(_logsFilePath);
+    }
+
     public void AddHabit(Habit habit)
     {
-        var habitDict = GetHabitDict();
+        _lock.EnterWriteLock();
+        try
+        {
+            var habitDict = GetHabitDict();
 
-        if (habitDict.TryAdd(habit.Id, habit))
-            SaveToFile(_habitsFilePath, habitDict);
-        else
-            throw new InvalidOperationException($"Habit with ID {habit.Id} already exists.");
-
+            if (habitDict.TryAdd(habit.Id, habit))
+                SaveToFile(_habitsFilePath, habitDict);
+            else
+                throw new InvalidOperationException($"Habit with ID {habit.Id} already exists.");
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
+
     public List<Habit> GetAllHabits()
     {
-        return [.. GetHabitDict().Values];
+        _lock.EnterReadLock();
+        try
+        {
+            return [.. GetHabitDict().Values];
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
     }
 
     public Habit? GetHabitById(Guid id)
     {
-        return GetHabitDict().GetValueOrDefault(id);
+        _lock.EnterReadLock();
+        try
+        {
+            return GetHabitDict().GetValueOrDefault(id);
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
     }
 
     public bool UpdateHabit(Habit habit)
     {
-        var habitDict = GetHabitDict();
+        _lock.EnterWriteLock();
+        try
+        {
+            var habitDict = GetHabitDict();
 
-        if (!habitDict.ContainsKey(habit.Id))
-            return false;
+            if (!habitDict.ContainsKey(habit.Id))
+                return false;
 
-        habitDict[habit.Id] = habit;
-        SaveToFile(_habitsFilePath, habitDict);
-        return true;
+            habitDict[habit.Id] = habit;
+            SaveToFile(_habitsFilePath, habitDict);
+            return true;
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
     public bool DeleteHabit(Guid id)
     {
-        var habitDict = GetHabitDict();
-        if (!habitDict.ContainsKey(id))
-            return false;
-
-        habitDict.Remove(id);
-        SaveToFile(_habitsFilePath, habitDict);
-
-        var logDict = GetHabitLogDict();
-        foreach (HabitLog log in logDict.Values)
+        _lock.EnterWriteLock();
+        try
         {
-            if (log.HabitId == id)
-                logDict[log.Id].IsDeletedHabit = true;
+            var habitDict = GetHabitDict();
+            if (!habitDict.ContainsKey(id))
+                return false;
+
+            habitDict.Remove(id);
+            SaveToFile(_habitsFilePath, habitDict);
+
+            var logDict = GetHabitLogDict();
+            foreach (HabitLog log in logDict.Values)
+            {
+                if (log.HabitId == id)
+                    logDict[log.Id].IsDeletedHabit = true;
+            }
+            SaveToFile(_logsFilePath, logDict);
+
+            return true;
         }
-        SaveToFile(_logsFilePath, logDict);
-
-        return true;
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
     }
 
-    public Dictionary<Guid, HabitLog> GetHabitLogDict()
-    {
-        return LoadFromFile<HabitLog>(_logsFilePath);
-    }
     public List<HabitLog> GetHabitLogs()
     {
-        return [.. LoadFromFile<HabitLog>(_logsFilePath).Values];
+        _lock.EnterReadLock();
+        try
+        {
+            return [.. LoadFromFile<HabitLog>(_logsFilePath).Values];
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
     }
 
     public void AddOrUpdateHabitLog(HabitLog log)
     {
-        var logId = log.Id;
-        var logHabitId = log.HabitId;
+        _lock.EnterWriteLock();
+        try
+        {
+            var logHabitId = log.HabitId;
 
-        if (GetHabitById(logHabitId) is null)
-            throw new InvalidOperationException($"Log is associated with HabitId ({logHabitId}) that does not exist");
+            if (GetHabitDict().GetValueOrDefault(logHabitId) is null)
+                throw new InvalidOperationException($"Log is associated with HabitId ({logHabitId}) that does not exist");
 
-        var logDict = GetHabitLogDict();
-        logDict[log.Id] = log;
+            var logDict = GetHabitLogDict();
+            logDict[log.Id] = log;
 
-        SaveToFile(_logsFilePath, logDict);
+            SaveToFile(_logsFilePath, logDict);
+        }
+        finally
+        {
+            _lock.ExitWriteLock();
+        }
+    }
+
+    public void Dispose()
+    {
+        _lock.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
