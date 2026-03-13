@@ -69,7 +69,7 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
         _lock.EnterReadLock();
         try
         {
-            return [.. GetHabitDict().Values];
+            return GetHabitDict().Values.ToList();
         }
         finally
         {
@@ -123,11 +123,8 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
             SaveToFile(_habitsFilePath, habitDict);
 
             var logDict = GetHabitLogDict();
-            foreach (HabitLog log in logDict.Values)
-            {
-                if (log.HabitId == id)
-                    logDict[log.Id].IsDeletedHabit = true;
-            }
+            foreach (var log in logDict.Values.Where(log => log.HabitId == id))
+                log.IsDeletedHabit = true;
             SaveToFile(_logsFilePath, logDict);
 
             return true;
@@ -143,7 +140,36 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
         _lock.EnterReadLock();
         try
         {
-            return [.. LoadFromFile<HabitLog>(_logsFilePath).Values];
+            return GetHabitLogDict().Values.ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    public List<HabitLog> GetHabitLogsByHabitId(Guid habitId)
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return GetHabitLogDict().Values
+                .Where(log => log.HabitId == habitId)
+                .ToList();
+        }
+        finally
+        {
+            _lock.ExitReadLock();
+        }
+    }
+
+    public HabitLog? GetHabitLog(Guid habitId, DateTime date)
+    {
+        _lock.EnterReadLock();
+        try
+        {
+            return GetHabitLogDict().Values
+                .FirstOrDefault(log => log.HabitId == habitId && log.Date.Date == date.Date);
         }
         finally
         {
@@ -156,12 +182,13 @@ public class JsonHabitRepository : IHabitRepository, IDisposable
         _lock.EnterWriteLock();
         try
         {
+            var logDict = GetHabitLogDict();
             var logHabitId = log.HabitId;
 
-            if (GetHabitDict().GetValueOrDefault(logHabitId) is null)
+            if (!logDict.ContainsKey(log.Id) && GetHabitDict().GetValueOrDefault(logHabitId) is null)
                 throw new InvalidOperationException($"Log is associated with HabitId ({logHabitId}) that does not exist");
 
-            var logDict = GetHabitLogDict();
+
             logDict[log.Id] = log;
 
             SaveToFile(_logsFilePath, logDict);

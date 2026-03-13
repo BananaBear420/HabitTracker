@@ -17,5 +17,7 @@ namespace HabitTracker.Repositories
         void AddOrUpdateHabitLog(HabitLog log);
         // Read Logs
         List<HabitLog> GetHabitLogs();
+        List<HabitLog> GetHabitLogsByHabitId(Guid habitId);
+        HabitLog? GetHabitLog(Guid habitId, DateTime date);
     }
 }
