@@ -6,10 +6,12 @@ public class HabitLog
     public Guid HabitId { get; set; }
     public DateTime Date { get; set; }
     public bool IsCompleted { get; set; }
+    public bool IsDeletedHabit { get; set; }
 
     public HabitLog()
     {
         Id = Guid.NewGuid();
         Date = DateTime.UtcNow;
+        IsDeletedHabit = false;
     }
 }
